@@ -48,7 +48,35 @@ class Router {
 
     return $controllers;
   }
-
+  
+  /**
+   * Converts the SiteMap definition of urlVariables to the key-value pair array
+   * containing the values stored in the URL.
+   * 
+   * Example definition in SiteMap:
+   *   "blog/([a-zA-Z0-9\-]+)" => [
+   *     "template" => "blog",
+   *     "urlVariables" => [
+   *       1 => "blogName",
+   *     ],
+   *     "controllers" => [
+   *       new \WEB\Controllers\Blog($Cascada),
+   *     ]
+   *   ],
+   *
+   * When following URL will be requested:
+   *   www.mydomain.com/blog/this-is-my-blog
+   * 
+   * then following key-value pair will be returned:
+   * [
+   *   "blogName" => "this-is-my-blog
+   * ]
+   *
+   * This will be accessible in the controller's object followingly:
+   *   $urlVariables = $this->cascada->urlVariables;
+   *
+   * @return array Key-value pair of URL variables
+   */
   function getCurrentPageUrlVariables() {
     $urlVariables = [];
     $routes = $this->getCurrentPageRoutes();
