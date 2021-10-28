@@ -149,6 +149,11 @@ class Router {
             header("Location: {$route['redirect'][0]}");
             exit();
           break;
+          case 302:
+            header("HTTP/1.1 302 Moved Temporarily");
+            header("Location: {$route['redirect'][0]}");
+            exit();
+          break;
         }
       }
     }
