@@ -22,10 +22,13 @@ class Loader {
   var $JSONResult = NULL;
   var $urlVariables = [];
   var $assetsUrlMap = [];
+  var $assetCacheDir = "";
 
   private $canContinueWithRendering = TRUE;
 
   function __construct($config) {
+
+    $this->setGlobal();
 
     $this->config = $config;
     $this->rootDir = $config["rootDir"];
@@ -34,6 +37,14 @@ class Loader {
     $this->relativeUrl = $config['relativeUrl'] ?? "";
     $this->themeDir = $config['themeDir'] ?? "";
     $this->twigTemplatesSubDir = $config["twigTemplatesSubDir"] ?? "Templates";
+    $this->assetCacheDir = $config['assetCacheDir'] ?? "";
+
+    if (
+      substr($this->rewriteBase, 0, 1) != "/"
+      || substr($this->rewriteBase, -1) != "/"
+    ) {
+      throw new \Exception("RewriteBase must start and end with a slash (/).");
+    }
 
     // extract pageUrl
     if ($this->rewriteBase == "/") {
@@ -55,7 +66,8 @@ class Loader {
     $this->pageUrl = trim($this->pageUrl, "/");
 
     // calculate rootUrl
-    $this->rootUrl = trim("./".str_repeat("../", substr_count($this->pageUrl, "/")), "/");
+    // $this->rootUrl = trim("./".str_repeat("../", substr_count($this->pageUrl, "/")), "/");
+    $this->rootUrl = rtrim($this->rewriteBase, "/");
 
     if ($this->themeDir != "") {
       $this->assetsUrlMap["theme/assets/"] = "{$this->themeDir}/Assets/";
@@ -105,11 +117,11 @@ class Loader {
       "urlVariables" => $this->urlVariables ?? [],
       "template" => $this->template ?? "",
       "cascadaInitJS" => "
-          <script>
-              Cascada = {
-                  'rootUrl': '{$this->rootUrl}',
-              }
-          </script>
+        <script>
+          Cascada = {
+            'rootUrl': '{$this->rootUrl}',
+          }
+        </script>
       ",
       "_GET" => $_GET,
       "_POST" => $_POST,
@@ -199,52 +211,81 @@ class Loader {
 
     // check if CSS, JS or Image should be rendered
     foreach ($this->assetsUrlMap as $urlPart => $mapping) {
-      if (preg_match('/^'.str_replace("/", "\\/", $urlPart).'/', $this->template, $m)) {
+      if (preg_match('/^'.str_replace("/", "\\/", $urlPart).'/', $this->template, $urlMapVariables)) {
         if ($mapping instanceof \Closure) {
-          $mapping($this, $this->template);
+          $sourceFile = $mapping($this, $this->template, $urlMapVariables);
         } else {
-          $ext = strtolower(pathinfo($this->template, PATHINFO_EXTENSION));
-
-          $cachingTime = 3600;
-          $headerExpires = "Expires: ".gmdate("D, d M Y H:i:s", time() + $cachingTime) . " GMT";
-          $headerCacheControl = "Cache-Control: max-age={$cachingTime}";
-
-          switch ($ext) {
-            case "css":
-            case "js":
-              header("Content-type: text/{$ext}");
-              header($headerExpires);
-              header("Pragma: cache");
-              header($headerCacheControl);
-              echo file_get_contents($mapping.str_replace($urlPart, "", $this->template));
-            break;
-            case "bmp":
-            case "gif":
-            case "jpg":
-            case "jpeg":
-            case "png":
-            case "tiff":
-            case "webp":
-            case "svg":
-            case "eot":
-            case "ttf":
-            case "woff":
-            case "woff2":
-              header("Content-type: image/{$ext}");
-              header($headerExpires);
-              header("Pragma: cache");
-              header($headerCacheControl);
-              echo file_get_contents($mapping.str_replace($urlPart, "", $this->template));
-            break;
-          }
-
-          exit();
+          $sourceFile = $mapping.str_replace($urlPart, "", $this->template);
         }
+
+        $ext = strtolower(pathinfo($this->template, PATHINFO_EXTENSION));
+
+        $cachingTime = 3600;
+        $headerExpires = "Expires: ".gmdate("D, d M Y H:i:s", time() + $cachingTime) . " GMT";
+        $headerCacheControl = "Cache-Control: max-age={$cachingTime}";
+
+        $assetContent = @file_get_contents($sourceFile);
+
+        if (!is_dir($this->assetCacheDir)) {
+          @mkdir($this->assetCacheDir, 0775);
+        }
+
+        if (!empty($this->assetCacheDir) && is_dir($this->assetCacheDir)) {
+          $cacheFile = "{$this->assetCacheDir}/".md5($this->template).".{$ext}";
+          @file_put_contents($cacheFile, $assetContent);
+        }
+
+        switch ($ext) {
+          case "css":
+          case "js":
+            header("Content-type: text/{$ext}");
+            header($headerExpires);
+            header("Pragma: cache");
+            header($headerCacheControl);
+            echo $assetContent;
+          break;
+          case "eot":
+          case "ttf":
+          case "woff":
+          case "woff2":
+            header("Content-type: font/{$ext}");
+            header($headerExpires);
+            header("Pragma: cache");
+            header($headerCacheControl);
+            echo $assetContent;
+          break;
+          case "bmp":
+          case "gif":
+          case "jpg":
+          case "jpeg":
+          case "png":
+          case "tiff":
+          case "webp":
+          case "svg":
+            if ($ext == "svg") {
+              $contentType = "svg+xml";
+            } else {
+              $contentType = $ext;
+            }
+
+            header("Content-type: image/{$contentType}");
+            header($headerExpires);
+            header("Pragma: cache");
+            header($headerCacheControl);
+            echo $assetContent;
+          break;
+        }
+
+        exit();
+
       }
     }
 
     // validate template name
-    if (strpos($this->template, ".") !== FALSE) {
+    if (
+      strpos($this->template, "..\\") !== FALSE
+      || strpos($this->template, "../") !== FALSE
+    ) {
       throw new \Exception("CASCADA: Invalid template name {$this->template}.");
     }
 
