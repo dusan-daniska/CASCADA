@@ -1,11 +1,11 @@
 {
-    "name": "wai-blue/adios",
+    "name": "wai-blue/cascada",
     "description": "Lightweight PHP8 CMS Framework",
     "type": "library",
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "CASCADA\\": "src/"
+            "Cascada\\": "src/"
         }
     },
     "authors": [
